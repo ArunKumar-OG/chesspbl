@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chessboard with Move Indicators</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      padding: 40px;
+      font-family: sans-serif;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      border: 3px solid #333;
+    }
+    .square {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .white { background-color: #f0d9b5; }
+    .black { background-color: #b58863; }
+    .selected { outline: 3px solid yellow; }
+    .move {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background-color: blue;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="chessboard" class="board"></div>
+
+  <!-- Include compiled C++ (Emscripten output) -->
+  <script src="chess_game.js"></script>
+
+  <script>
+    let game;
+    const boardEl = document.getElementById('chessboard');
+    let selected = null;
+
+    const getColor = (row, col) => (row + col) % 2 === 0 ? 'white' : 'black';
+
+    const unicodePieces = {
+      'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+      'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟︎'
+    };
+
+    // Convert board state string to 2D array
+    const parseBoardState = (state) => {
+      const board = [];
+      for (let i = 0; i < 8; i++) {
+        board.push(state.slice(i * 8, i * 8 + 8).split(''));
+      }
+      return board;
+    };
+
+    const renderBoard = () => {
+      boardEl.innerHTML = '';
+      const board = parseBoardState(game.getBoardState());
+
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const square = document.createElement('div');
+          square.className = `square ${getColor(row, col)}`;
+          square.dataset.row = row;
+          square.dataset.col = col;
+
+          const piece = board[row][col];
+          if (piece !== ' ') {
+            square.textContent = unicodePieces[piece] || piece;
+          }
+
+          if (selected && selected.row === row && selected.col === col) {
+            square.classList.add('selected');
+          }
+
+          square.onclick = () => handleSquareClick(row, col);
+          boardEl.appendChild(square);
+        }
+      }
+    };
+
+    const handleSquareClick = (row, col) => {
+      const board = parseBoardState(game.getBoardState());
+      const piece = board[row][col];
+
+      if (selected) {
+        if (game.makeMove(selected.row, selected.col, row, col)) {
+          selected = null;
+        } else {
+          selected = piece !== ' ' ? { row, col } : null;
+        }
+      } else if (piece !== ' ') {
+        selected = { row, col };
+      }
+
+      renderBoard();
+    };
+
+    // Initialize WASM + game
+    ChessModule().then((Module) => {
+      game = new Module.ChessGame();
+      console.log("Chess game loaded.");
+      renderBoard();
+    });
+  </script>
+</body>
+</html>
