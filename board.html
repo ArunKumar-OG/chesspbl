@@ -10,12 +10,14 @@
       padding: 40px;
       font-family: sans-serif;
     }
+
     .board {
       display: grid;
       grid-template-columns: repeat(8, 60px);
       grid-template-rows: repeat(8, 60px);
       border: 3px solid #333;
     }
+
     .square {
       position: relative;
       display: flex;
@@ -25,9 +27,19 @@
       cursor: pointer;
       user-select: none;
     }
-    .white { background-color: #f0d9b5; }
-    .black { background-color: #b58863; }
-    .selected { outline: 3px solid yellow; }
+
+    .white {
+      background-color: #f0d9b5;
+    }
+
+    .black {
+      background-color: #b58863;
+    }
+
+    .selected {
+      outline: 3px solid yellow;
+    }
+
     .move {
       position: absolute;
       width: 12px;
@@ -41,33 +53,119 @@
 <body>
   <div id="chessboard" class="board"></div>
 
-  <!-- Include compiled C++ (Emscripten output) -->
-  <script src="chess_game.js"></script>
-
   <script>
-    let game;
-    const boardEl = document.getElementById('chessboard');
-    let selected = null;
-
-    const getColor = (row, col) => (row + col) % 2 === 0 ? 'white' : 'black';
+    const board = [
+      ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
+      ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+      ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+      ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
+    ];
 
     const unicodePieces = {
       'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
       'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟︎'
     };
 
-    // Convert board state string to 2D array
-    const parseBoardState = (state) => {
-      const board = [];
-      for (let i = 0; i < 8; i++) {
-        board.push(state.slice(i * 8, i * 8 + 8).split(''));
+    const boardEl = document.getElementById('chessboard');
+    let selected = null;
+
+    const getColor = (row, col) => (row + col) % 2 === 0 ? 'white' : 'black';
+
+    const isOpponent = (from, to) =>
+      from !== ' ' && to !== ' ' && (from.toUpperCase() !== to.toUpperCase()) &&
+      ((from === from.toUpperCase()) !== (to === to.toUpperCase()));
+
+    const inBounds = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+
+    const getPossibleMoves = (row, col) => {
+      const piece = board[row][col];
+      if (piece === ' ') return [];
+
+      const moves = [];
+      const isWhite = piece === piece.toUpperCase();
+      const upper = piece.toUpperCase();
+
+      const tryPush = (r, c, allowCapture = true) => {
+        if (!inBounds(r, c)) return false;
+        const target = board[r][c];
+        if (target === ' ') {
+          moves.push([r, c]);
+          return true;
+        } else if (allowCapture && isOpponent(piece, target)) {
+          moves.push([r, c]);
+        }
+        return false;
+      };
+
+      if (upper === 'P') {
+        const dir = isWhite ? -1 : 1;
+        const startRow = isWhite ? 6 : 1;
+
+        if (board[row + dir]?.[col] === ' ') {
+          moves.push([row + dir, col]);
+          if (row === startRow && board[row + 2 * dir]?.[col] === ' ') {
+            moves.push([row + 2 * dir, col]);
+          }
+        }
+
+        for (let dc of [-1, 1]) {
+          const r = row + dir;
+          const c = col + dc;
+          if (inBounds(r, c) && isOpponent(piece, board[r][c])) {
+            moves.push([r, c]);
+          }
+        }
       }
-      return board;
+
+      if (upper === 'R' || upper === 'Q') {
+        for (let i = row + 1; i < 8 && tryPush(i, col); i++) if (board[i][col] !== ' ') break;
+        for (let i = row - 1; i >= 0 && tryPush(i, col); i--) if (board[i][col] !== ' ') break;
+        for (let i = col + 1; i < 8 && tryPush(row, i); i++) if (board[row][i] !== ' ') break;
+        for (let i = col - 1; i >= 0 && tryPush(row, i); i--) if (board[row][i] !== ' ') break;
+      }
+
+      if (upper === 'B' || upper === 'Q') {
+        for (let i = 1; tryPush(row + i, col + i); i++) if (board[row + i][col + i] !== ' ') break;
+        for (let i = 1; tryPush(row - i, col - i); i++) if (board[row - i][col - i] !== ' ') break;
+        for (let i = 1; tryPush(row - i, col + i); i++) if (board[row - i][col + i] !== ' ') break;
+        for (let i = 1; tryPush(row + i, col - i); i++) if (board[row + i][col - i] !== ' ') break;
+      }
+
+      if (upper === 'N') {
+        const knightMoves = [
+          [row - 2, col - 1], [row - 2, col + 1], [row - 1, col - 2], [row - 1, col + 2],
+          [row + 1, col - 2], [row + 1, col + 2], [row + 2, col - 1], [row + 2, col + 1]
+        ];
+        knightMoves.forEach(([r, c]) => {
+          if (inBounds(r, c) && (board[r][c] === ' ' || isOpponent(piece, board[r][c]))) {
+            moves.push([r, c]);
+          }
+        });
+      }
+
+      if (upper === 'K') {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const r = row + dr;
+            const c = col + dc;
+            if (inBounds(r, c) && (board[r][c] === ' ' || isOpponent(piece, board[r][c]))) {
+              moves.push([r, c]);
+            }
+          }
+        }
+      }
+
+      return moves;
     };
 
     const renderBoard = () => {
       boardEl.innerHTML = '';
-      const board = parseBoardState(game.getBoardState());
+      let possibleMoves = selected ? getPossibleMoves(selected.row, selected.col) : [];
 
       for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -78,11 +176,17 @@
 
           const piece = board[row][col];
           if (piece !== ' ') {
-            square.textContent = unicodePieces[piece] || piece;
+            square.textContent = unicodePieces[piece];
           }
 
           if (selected && selected.row === row && selected.col === col) {
             square.classList.add('selected');
+          }
+
+          if (possibleMoves.some(([r, c]) => r === row && c === col)) {
+            const dot = document.createElement('div');
+            dot.classList.add('move');
+            square.appendChild(dot);
           }
 
           square.onclick = () => handleSquareClick(row, col);
@@ -92,11 +196,13 @@
     };
 
     const handleSquareClick = (row, col) => {
-      const board = parseBoardState(game.getBoardState());
       const piece = board[row][col];
 
       if (selected) {
-        if (game.makeMove(selected.row, selected.col, row, col)) {
+        const possible = getPossibleMoves(selected.row, selected.col);
+        if (possible.some(([r, c]) => r === row && c === col)) {
+          board[row][col] = board[selected.row][selected.col];
+          board[selected.row][selected.col] = ' ';
           selected = null;
         } else {
           selected = piece !== ' ' ? { row, col } : null;
@@ -108,12 +214,7 @@
       renderBoard();
     };
 
-    // Initialize WASM + game
-    ChessModule().then((Module) => {
-      game = new Module.ChessGame();
-      console.log("Chess game loaded.");
-      renderBoard();
-    });
+    renderBoard();
   </script>
 </body>
 </html>
